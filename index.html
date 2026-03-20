@@ -440,9 +440,9 @@
                         if (permission === 'granted') {
                             // IMPORTANTE: Insira sua chave VAPID gerada no console do Firebase aqui
                             // Vá em Project Settings > Cloud Messaging > Web configuration > Generate key pair
-                            const vapidKey = "COLE_SUA_CHAVE_VAPID_AQUI_DEPOIS"; 
+                            const vapidKey = "BH4-OXG0g7btZDkbaIgUPJyqrgsqq9INyB7f52rRc2IakXkByvDPQRbH8vbuqPyK0NHP_YIUtRz7B6_pruED5jI"; 
                             
-                            if(vapidKey !== "COLE_SUA_CHAVE_VAPID_AQUI_DEPOIS") {
+                            if(vapidKey !== BH4-OXG0g7btZDkbaIgUPJyqrgsqq9INyB7f52rRc2IakXkByvDPQRbH8vbuqPyK0NHP_YIUtRz7B6_pruED5jI") {
                                 const token = await getToken(messaging, { vapidKey: vapidKey });
                                 console.log("FCM Token (pode ser usado para enviar mensagens do console):", token);
                             }
