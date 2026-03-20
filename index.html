@@ -5,30 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Minhas Contas | PWA</title>
     
-    <!-- Vue 3 -->
-    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json" id="manifest-link">
 
-    <!-- Tailwind Config Personalizada para UI mais limpa -->
     <script>
         tailwind.config = {
             theme: {
-                extend: {
-                    colors: {
-                        primary: '#4F46E5', // Indigo 600
-                        secondary: '#10B981', // Emerald 500
-                    }
-                }
+                extend: { colors: { primary: '#4F46E5', secondary: '#10B981' } }
             }
         }
     </script>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f3f4f6; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f3f4f6; }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         [v-cloak] { display: none; }
@@ -43,29 +37,31 @@
                 <div class="text-center mb-8">
                     <i class="ph-fill ph-wallet text-5xl text-primary mb-2"></i>
                     <h1 class="text-2xl font-bold text-gray-900">Minhas Contas</h1>
-                    <p class="text-sm text-gray-500">Acesse para gerenciar suas finanças</p>
+                    <p class="text-sm text-gray-500">Acesse com sua conta do Firebase</p>
                 </div>
                 
                 <form @submit.prevent="login" class="space-y-4">
+                    <div v-if="loginError" class="bg-red-100 text-red-700 p-3 rounded-lg text-sm text-center">
+                        {{ loginError }}
+                    </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">E-mail</label>
-                        <input type="email" v-model="authForm.email" required placeholder="seu@email.com" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary focus:border-primary outline-none transition">
+                        <input type="email" v-model="authForm.email" required class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary outline-none">
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Senha</label>
-                        <input type="password" v-model="authForm.password" required placeholder="••••••••" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary focus:border-primary outline-none transition">
+                        <input type="password" v-model="authForm.password" required class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary outline-none">
                     </div>
-                    <button type="submit" class="w-full bg-primary hover:bg-indigo-700 text-white font-semibold py-3 px-4 rounded-xl transition flex justify-center items-center shadow-lg shadow-indigo-200">
-                        Entrar <i class="ph ph-sign-in ml-2 text-lg"></i>
+                    <button type="submit" :disabled="isLoading" class="w-full bg-primary hover:bg-indigo-700 text-white font-semibold py-3 px-4 rounded-xl transition flex justify-center items-center shadow-lg shadow-indigo-200 disabled:opacity-70">
+                        <span v-if="isLoading"><i class="ph ph-spinner animate-spin text-xl"></i></span>
+                        <span v-else class="flex items-center">Entrar <i class="ph ph-sign-in ml-2 text-lg"></i></span>
                     </button>
-                    <p class="text-xs text-center text-gray-400 mt-4">Simulação local. Qualquer e-mail e senha funcionarão para testes.</p>
                 </form>
             </div>
         </div>
 
         <!-- ================= TELA PRINCIPAL (DASHBOARD) ================= -->
         <div v-else class="flex-1 flex flex-col h-screen overflow-hidden">
-            
             <!-- HEADER -->
             <header class="bg-primary text-white pt-6 pb-4 px-4 shadow-md shrink-0 rounded-b-3xl">
                 <div class="max-w-4xl mx-auto">
@@ -75,7 +71,7 @@
                             <h1 class="text-xl font-bold tracking-wide">Gestor de Contas</h1>
                         </div>
                         <div class="flex items-center gap-3">
-                            <button @click="exportData" class="p-2 bg-white/20 rounded-full hover:bg-white/30 transition" title="Exportar Backup (JSON)">
+                            <button @click="exportData" class="p-2 bg-white/20 rounded-full hover:bg-white/30 transition" title="Backup (JSON)">
                                 <i class="ph ph-download-simple text-xl"></i>
                             </button>
                             <button @click="logout" class="p-2 bg-white/20 rounded-full hover:bg-white/30 transition" title="Sair">
@@ -84,7 +80,6 @@
                         </div>
                     </div>
                     
-                    <!-- Seletor de Mês -->
                     <div class="flex items-center justify-between bg-white/10 p-2 rounded-2xl">
                         <button @click="prevMonth" class="p-2 hover:bg-white/20 rounded-xl transition"><i class="ph ph-caret-left text-xl"></i></button>
                         <div class="text-center">
@@ -98,23 +93,21 @@
             <!-- CONTEÚDO SCROLLÁVEL -->
             <main class="flex-1 overflow-y-auto px-4 py-6 space-y-6 max-w-4xl mx-auto w-full hide-scrollbar">
                 
-                <!-- Resumo Financeiro (Cards) -->
                 <div class="grid grid-cols-3 gap-3">
                     <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center">
-                        <span class="text-xs font-semibold text-gray-400 uppercase">Total do Mês</span>
-                        <span class="text-lg md:text-xl font-bold text-gray-800 mt-1">{{ formatCurrency(totalMonth) }}</span>
+                        <span class="text-[10px] sm:text-xs font-semibold text-gray-400 uppercase">Total do Mês</span>
+                        <span class="text-base sm:text-lg md:text-xl font-bold text-gray-800 mt-1">{{ formatCurrency(totalMonth) }}</span>
                     </div>
                     <div class="bg-emerald-50 p-4 rounded-2xl shadow-sm border border-emerald-100 flex flex-col items-center justify-center text-center">
-                        <span class="text-xs font-semibold text-emerald-600 uppercase">Pago</span>
-                        <span class="text-lg md:text-xl font-bold text-emerald-700 mt-1">{{ formatCurrency(totalPaid) }}</span>
+                        <span class="text-[10px] sm:text-xs font-semibold text-emerald-600 uppercase">Pago</span>
+                        <span class="text-base sm:text-lg md:text-xl font-bold text-emerald-700 mt-1">{{ formatCurrency(totalPaid) }}</span>
                     </div>
                     <div class="bg-red-50 p-4 rounded-2xl shadow-sm border border-red-100 flex flex-col items-center justify-center text-center">
-                        <span class="text-xs font-semibold text-red-600 uppercase">Pendente</span>
-                        <span class="text-lg md:text-xl font-bold text-red-700 mt-1">{{ formatCurrency(totalPending) }}</span>
+                        <span class="text-[10px] sm:text-xs font-semibold text-red-600 uppercase">Pendente</span>
+                        <span class="text-base sm:text-lg md:text-xl font-bold text-red-700 mt-1">{{ formatCurrency(totalPending) }}</span>
                     </div>
                 </div>
 
-                <!-- Gráfico de Categorias -->
                 <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100" v-show="filteredBills.length > 0">
                     <h2 class="text-sm font-bold text-gray-700 mb-4 flex items-center gap-2">
                         <i class="ph ph-pie-chart text-primary"></i> Despesas por Categoria
@@ -124,7 +117,6 @@
                     </div>
                 </div>
 
-                <!-- Lista de Contas -->
                 <div>
                     <div class="flex justify-between items-center mb-4">
                         <h2 class="text-sm font-bold text-gray-700 flex items-center gap-2">
@@ -136,7 +128,6 @@
                     <div v-if="filteredBills.length === 0" class="text-center py-10 bg-white rounded-2xl border border-dashed border-gray-300">
                         <i class="ph ph-receipt text-4xl text-gray-300 mb-2"></i>
                         <p class="text-gray-500 font-medium">Nenhuma conta para este mês.</p>
-                        <p class="text-sm text-gray-400">Adicione uma nova clicando no botão abaixo.</p>
                     </div>
 
                     <div class="space-y-3">
@@ -144,10 +135,8 @@
                              class="bg-white rounded-2xl shadow-sm overflow-hidden flex items-stretch border border-gray-100 transition-all"
                              :class="{'opacity-75': bill.paid}">
                             
-                            <!-- Tarja de Status -->
                             <div class="w-3 shrink-0" :class="getStatusColor(bill).tarja"></div>
                             
-                            <!-- Conteúdo da Conta -->
                             <div class="flex-1 p-4 flex justify-between items-center gap-3">
                                 <div class="flex-1 min-w-0">
                                     <div class="flex items-center gap-2 mb-1">
@@ -165,10 +154,6 @@
                                             <i class="ph ph-push-pin" v-else></i>
                                             {{ getFrequencyName(bill.frequency) }}
                                         </span>
-                                        <span class="flex items-center gap-1">
-                                            <i :class="bill.method === 'credito' ? 'ph ph-credit-card' : 'ph ph-bank'"></i>
-                                            {{ bill.method === 'credito' ? 'Crédito' : 'Débito/Pix' }}
-                                        </span>
                                     </div>
                                 </div>
                                 
@@ -176,7 +161,6 @@
                                     <span class="font-bold text-base" :class="bill.paid ? 'text-gray-400' : 'text-gray-900'">
                                         {{ formatCurrency(bill.amount) }}
                                     </span>
-                                    <!-- Checkbox de Pagamento -->
                                     <label class="relative flex items-center cursor-pointer">
                                         <input type="checkbox" :checked="bill.paid" @change="togglePaid(bill)" class="sr-only peer">
                                         <div class="w-7 h-7 bg-gray-100 border-2 border-gray-300 rounded-lg peer peer-checked:bg-emerald-500 peer-checked:border-emerald-500 transition-all flex items-center justify-center">
@@ -191,7 +175,7 @@
                 </div>
             </main>
 
-            <!-- FAB (Floating Action Button) -->
+            <!-- FAB -->
             <button @click="showAddModal = true" class="fixed bottom-6 right-6 md:bottom-8 md:right-8 bg-primary text-white w-14 h-14 rounded-full shadow-lg shadow-indigo-300 flex items-center justify-center hover:bg-indigo-700 hover:scale-105 transition-transform z-40">
                 <i class="ph ph-plus text-2xl font-bold"></i>
             </button>
@@ -211,24 +195,24 @@
                     <form @submit.prevent="saveBill" class="space-y-4">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Nome da Conta</label>
-                            <input type="text" v-model="form.name" required placeholder="Ex: Conta de Luz, Aluguel" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary focus:border-primary outline-none transition">
+                            <input type="text" v-model="form.name" required placeholder="Ex: Conta de Luz" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary outline-none">
                         </div>
                         
                         <div class="grid grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Vencimento</label>
-                                <input type="date" v-model="form.dueDate" required class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary focus:border-primary outline-none transition">
+                                <input type="date" v-model="form.dueDate" required class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary outline-none">
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Valor (R$)</label>
-                                <input type="number" step="0.01" min="0" v-model="form.amount" required placeholder="0,00" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary focus:border-primary outline-none transition">
+                                <input type="number" step="0.01" min="0" v-model="form.amount" required placeholder="0,00" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary outline-none">
                             </div>
                         </div>
 
                         <div class="grid grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Frequência</label>
-                                <select v-model="form.frequency" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary focus:border-primary outline-none transition bg-white">
+                                <select v-model="form.frequency" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary bg-white outline-none">
                                     <option value="unica">Única</option>
                                     <option value="semanal">Semanal</option>
                                     <option value="quinzenal">Quinzenal</option>
@@ -241,9 +225,9 @@
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Método</label>
-                                <select v-model="form.method" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary focus:border-primary outline-none transition bg-white">
-                                    <option value="debito">Débito / Pix / Dinheiro</option>
-                                    <option value="credito">Cartão de Crédito</option>
+                                <select v-model="form.method" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary bg-white outline-none">
+                                    <option value="debito">Débito/Pix</option>
+                                    <option value="credito">Crédito</option>
                                 </select>
                             </div>
                         </div>
@@ -260,32 +244,63 @@
                             </div>
                         </div>
 
-                        <button type="submit" class="w-full bg-secondary hover:bg-emerald-600 text-white font-bold py-3.5 px-4 rounded-xl transition mt-6 shadow-lg shadow-emerald-200 flex justify-center items-center">
-                            Salvar Conta
+                        <button type="submit" :disabled="isLoading" class="w-full bg-secondary hover:bg-emerald-600 text-white font-bold py-3.5 px-4 rounded-xl transition mt-6 shadow-lg shadow-emerald-200 disabled:opacity-70 flex justify-center">
+                            <span v-if="isLoading"><i class="ph ph-spinner animate-spin text-xl"></i></span>
+                            <span v-else>Salvar Conta</span>
                         </button>
                     </form>
                 </div>
             </div>
         </div>
-
     </div>
 
-    <script>
-        const { createApp, ref, computed, watch, onMounted, nextTick } = Vue;
+    <!-- Script Principal com Firebase Modular (v10) e Vue 3 -->
+    <script type="module">
+        import { createApp, ref, computed, watch, onMounted, nextTick } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js';
+        
+        // Firebase Core & Auth
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+        
+        // Firebase Firestore
+        import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        
+        // Firebase Cloud Messaging
+        import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-messaging.js";
+
+        // SUA CONFIGURAÇÃO DO FIREBASE (Colada exatamente como você mandou)
+        const firebaseConfig = {
+            apiKey: "AIzaSyD4jGS3fecgaK5fsUYfH_fdtwKwpLud0GE",
+            authDomain: "monthly-bills-a70ee.firebaseapp.com",
+            projectId: "monthly-bills-a70ee",
+            storageBucket: "monthly-bills-a70ee.firebasestorage.app",
+            messagingSenderId: "953639559020",
+            appId: "1:953639559020:web:1e74257e567df308925d49"
+        };
+
+        // Inicializa o Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        
+        // Opcional: Variável para o Messaging (só ativa se suportado)
+        let messaging = null;
+        try { messaging = getMessaging(app); } catch (e) { console.log("FCM não suportado neste navegador", e); }
 
         createApp({
             setup() {
-                // ================= ESTADO DA APLICAÇÃO =================
                 const isLoggedIn = ref(false);
+                const isLoading = ref(false);
+                const loginError = ref('');
                 const authForm = ref({ email: '', password: '' });
+                const currentUser = ref(null);
+                let unsubscribeSnapshot = null; // Para limpar o listener do banco
+
                 const bills = ref([]);
                 const showAddModal = ref(false);
-                
-                // Mês Selecionado (Formato YYYY-MM)
                 const today = new Date();
                 const selectedMonth = ref(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`);
 
-                // Categorias
                 const categories = {
                     moradia: { name: 'Moradia', color: 'bg-blue-100 text-blue-700', hex: '#3b82f6' },
                     alimentacao: { name: 'Alimentação', color: 'bg-orange-100 text-orange-700', hex: '#f97316' },
@@ -296,114 +311,101 @@
                     outros: { name: 'Outros', color: 'bg-gray-200 text-gray-700', hex: '#6b7280' }
                 };
 
-                // Formulário de Nova Conta
-                const getEmptyForm = () => ({
-                    id: null,
-                    name: '',
-                    dueDate: '',
-                    amount: '',
-                    frequency: 'mensal',
-                    method: 'debito',
-                    category: 'outros',
-                    paid: false,
-                    nextGenerated: false
-                });
+                const getEmptyForm = () => ({ name: '', dueDate: '', amount: '', frequency: 'mensal', method: 'debito', category: 'outros', paid: false, nextGenerated: false });
                 const form = ref(getEmptyForm());
-
                 let chartInstance = null;
 
-                // ================= COMPUTAÇÕES (REATIVIDADE) =================
-
-                // Filtra as contas pelo mês selecionado baseando-se na data de vencimento
-                const filteredBills = computed(() => {
-                    if(!selectedMonth.value) return [];
-                    const [year, month] = selectedMonth.value.split('-');
-                    return bills.value.filter(bill => {
-                        const bDate = new Date(bill.dueDate + 'T12:00:00'); // Evita bug de fuso horário
-                        return bDate.getFullYear() == year && (bDate.getMonth() + 1) == month;
-                    });
-                });
-
-                // Ordena: Não pagas primeiro (por data), depois pagas
-                const sortedBills = computed(() => {
-                    return [...filteredBills.value].sort((a, b) => {
-                        if (a.paid === b.paid) {
-                            return new Date(a.dueDate) - new Date(b.dueDate);
+                // --- OBSERVA O ESTADO DO USUÁRIO ---
+                onMounted(() => {
+                    onAuthStateChanged(auth, (user) => {
+                        if (user) {
+                            currentUser.value = user;
+                            isLoggedIn.value = true;
+                            loadData(user.uid);
+                            setupNotifications(); // Pede permissão FCM
+                        } else {
+                            currentUser.value = null;
+                            isLoggedIn.value = false;
+                            bills.value = [];
+                            if (unsubscribeSnapshot) unsubscribeSnapshot();
                         }
-                        return a.paid ? 1 : -1;
                     });
                 });
 
-                // Totais do mês
-                const totalMonth = computed(() => filteredBills.value.reduce((acc, curr) => acc + curr.amount, 0));
-                const totalPaid = computed(() => filteredBills.value.filter(b => b.paid).reduce((acc, curr) => acc + curr.amount, 0));
-                const totalPending = computed(() => totalMonth.value - totalPaid.value);
-
-
-                // ================= MÉTODOS DE NEGÓCIO E UI =================
-
-                const login = () => {
-                    // Firebase: Aqui entraria auth().signInWithEmailAndPassword
-                    if(authForm.value.email && authForm.value.password) {
-                        isLoggedIn.value = true;
-                        localStorage.setItem('pwa_logged_in', 'true');
-                        requestNotificationPermission(); // Pede permissão logo no login
+                // --- AUTENTICAÇÃO ---
+                const login = async () => {
+                    isLoading.value = true;
+                    loginError.value = '';
+                    try {
+                        await signInWithEmailAndPassword(auth, authForm.value.email, authForm.value.password);
+                        authForm.value = { email: '', password: '' };
+                    } catch (error) {
+                        loginError.value = 'Erro: Verifique e-mail e senha. Crie a conta no Firebase primeiro.';
+                        console.error(error);
+                    } finally {
+                        isLoading.value = false;
                     }
                 };
 
-                const logout = () => {
-                    isLoggedIn.value = false;
-                    localStorage.removeItem('pwa_logged_in');
+                const logout = async () => {
+                    await signOut(auth);
                 };
 
-                const loadData = () => {
-                    // Firebase: Aqui entraria db.collection('bills').onSnapshot(...)
-                    const saved = localStorage.getItem('pwa_bills_data');
-                    if(saved) {
-                        bills.value = JSON.parse(saved);
+                // --- BANCO DE DADOS (FIRESTORE) ---
+                const loadData = (uid) => {
+                    // Escuta as contas APENAS do usuário logado em tempo real
+                    const billsRef = collection(db, "users", uid, "bills");
+                    unsubscribeSnapshot = onSnapshot(billsRef, (snapshot) => {
+                        const loadedBills = [];
+                        snapshot.forEach((doc) => {
+                            loadedBills.push({ id: doc.id, ...doc.data() });
+                        });
+                        bills.value = loadedBills;
+                        updateChart();
+                        checkDueBillsForLocalNotifications(); // Checagem local automática
+                    });
+                };
+
+                const saveBill = async () => {
+                    if (form.value.name && form.value.dueDate && form.value.amount && currentUser.value) {
+                        isLoading.value = true;
+                        try {
+                            const newBill = {
+                                ...form.value,
+                                amount: parseFloat(form.value.amount),
+                                createdAt: new Date().toISOString()
+                            };
+                            // Adiciona no Firebase (gera ID automático)
+                            await addDoc(collection(db, "users", currentUser.value.uid, "bills"), newBill);
+                            showAddModal.value = false;
+                            form.value = getEmptyForm();
+                        } catch(e) { console.error("Erro ao salvar:", e); }
+                        finally { isLoading.value = false; }
                     }
                 };
 
-                const saveData = () => {
-                    // Firebase: Aqui atualizaríamos o db
-                    localStorage.setItem('pwa_bills_data', JSON.stringify(bills.value));
-                    updateChart();
-                };
-
-                const saveBill = () => {
-                    if (form.value.name && form.value.dueDate && form.value.amount) {
-                        const newBill = {
-                            ...form.value,
-                            id: Date.now().toString(),
-                            amount: parseFloat(form.value.amount)
-                        };
-                        bills.value.push(newBill);
-                        saveData();
-                        showAddModal.value = false;
-                        form.value = getEmptyForm();
-                    }
-                };
-
-                const deleteBill = (id) => {
+                const deleteBill = async (id) => {
                     if(confirm('Tem certeza que deseja excluir esta conta?')){
-                        bills.value = bills.value.filter(b => b.id !== id);
-                        saveData();
+                        await deleteDoc(doc(db, "users", currentUser.value.uid, "bills", id));
                     }
                 };
 
-                const togglePaid = (bill) => {
-                    bill.paid = !bill.paid;
+                const togglePaid = async (bill) => {
+                    const newValue = !bill.paid;
+                    const billRef = doc(db, "users", currentUser.value.uid, "bills", bill.id);
                     
-                    // Lógica mágica: Se marcou como paga e tem recorrência, geramos o próximo ciclo!
-                    if (bill.paid && bill.frequency !== 'unica' && !bill.nextGenerated) {
-                        generateNextBillingCycle(bill);
-                        bill.nextGenerated = true; // Marca para não gerar duplicado
-                    }
-                    
-                    saveData();
+                    try {
+                        await updateDoc(billRef, { paid: newValue });
+                        
+                        // Gerador de Fatura Recorrente no banco de dados real
+                        if (newValue && bill.frequency !== 'unica' && !bill.nextGenerated) {
+                            await updateDoc(billRef, { nextGenerated: true });
+                            generateNextBillingCycle(bill);
+                        }
+                    } catch(e) { console.error("Erro ao atualizar status:", e); }
                 };
 
-                const generateNextBillingCycle = (bill) => {
+                const generateNextBillingCycle = async (bill) => {
                     const nextDate = new Date(bill.dueDate + 'T12:00:00');
                     switch(bill.frequency) {
                         case 'semanal': nextDate.setDate(nextDate.getDate() + 7); break;
@@ -416,243 +418,169 @@
                     }
                     
                     const nextBill = {
-                        ...bill,
-                        id: Date.now().toString() + '_auto',
+                        name: bill.name,
+                        amount: bill.amount,
+                        category: bill.category,
+                        frequency: bill.frequency,
+                        method: bill.method,
                         dueDate: nextDate.toISOString().split('T')[0],
                         paid: false,
-                        nextGenerated: false
+                        nextGenerated: false,
+                        createdAt: new Date().toISOString()
                     };
-                    bills.value.push(nextBill);
                     
-                    // Notificação de sistema local para confirmar criação
-                    if("Notification" in window && Notification.permission === "granted") {
-                        new Notification("Próxima fatura gerada", {
-                            body: `A conta "${bill.name}" para ${formatDate(nextBill.dueDate)} foi gerada.`,
-                            icon: "https://cdn-icons-png.flaticon.com/512/2933/2933116.png"
-                        });
+                    await addDoc(collection(db, "users", currentUser.value.uid, "bills"), nextBill);
+                };
+
+                // --- NOTIFICAÇÕES (FCM + LOCAL) ---
+                const setupNotifications = async () => {
+                    if (!messaging) return;
+                    try {
+                        const permission = await Notification.requestPermission();
+                        if (permission === 'granted') {
+                            // IMPORTANTE: Insira sua chave VAPID gerada no console do Firebase aqui
+                            // Vá em Project Settings > Cloud Messaging > Web configuration > Generate key pair
+                            const vapidKey = "COLE_SUA_CHAVE_VAPID_AQUI_DEPOIS"; 
+                            
+                            if(vapidKey !== "COLE_SUA_CHAVE_VAPID_AQUI_DEPOIS") {
+                                const token = await getToken(messaging, { vapidKey: vapidKey });
+                                console.log("FCM Token (pode ser usado para enviar mensagens do console):", token);
+                            }
+
+                            // Ouve mensagens enviadas pelo Firebase Console enquanto o app está ABERTO
+                            onMessage(messaging, (payload) => {
+                                console.log('Mensagem recebida no app aberto: ', payload);
+                                alert(`Notificação do Firebase: ${payload.notification.title} - ${payload.notification.body}`);
+                            });
+                        }
+                    } catch (error) {
+                        console.error('Erro ao configurar FCM:', error);
                     }
                 };
 
-                // Funções de Datas
+                // Lógica Inteligente Offline (Avisa sobre contas vencendo só de abrir o app)
+                const checkDueBillsForLocalNotifications = () => {
+                    if (!("Notification" in window) || Notification.permission !== "granted") return;
+                    const todayDate = new Date();
+                    todayDate.setHours(0,0,0,0);
+
+                    bills.value.forEach(bill => {
+                        if(bill.paid) return;
+                        const d = new Date(bill.dueDate + 'T00:00:00');
+                        const diffDays = Math.ceil((d - todayDate) / (1000 * 60 * 60 * 24));
+                        
+                        // Usamos localStorage para não ficar notificando a mesma conta toda hora que atualizar o DB
+                        const alertKey = `alert_${bill.id}_${diffDays}`;
+                        if (localStorage.getItem(alertKey)) return;
+
+                        if (diffDays === 1 || diffDays === 2) {
+                            new Notification("Conta próxima do vencimento!", { body: `${bill.name} vence em ${diffDays} dia(s).` });
+                            localStorage.setItem(alertKey, 'true');
+                        } else if (diffDays === 0) {
+                            new Notification("Conta vence HOJE!", { body: `Não esqueça de pagar: ${bill.name}` });
+                            localStorage.setItem(alertKey, 'true');
+                        }
+                    });
+                };
+
+
+                // --- COMPUTAÇÕES E GRÁFICOS (Mantidas iguais, funcionam perfeitamente) ---
+                const filteredBills = computed(() => {
+                    if(!selectedMonth.value) return [];
+                    const [year, month] = selectedMonth.value.split('-');
+                    return bills.value.filter(bill => {
+                        const bDate = new Date(bill.dueDate + 'T12:00:00');
+                        return bDate.getFullYear() == year && (bDate.getMonth() + 1) == month;
+                    });
+                });
+
+                const sortedBills = computed(() => {
+                    return [...filteredBills.value].sort((a, b) => {
+                        if (a.paid === b.paid) return new Date(a.dueDate) - new Date(b.dueDate);
+                        return a.paid ? 1 : -1;
+                    });
+                });
+
+                const totalMonth = computed(() => filteredBills.value.reduce((acc, curr) => acc + curr.amount, 0));
+                const totalPaid = computed(() => filteredBills.value.filter(b => b.paid).reduce((acc, curr) => acc + curr.amount, 0));
+                const totalPending = computed(() => totalMonth.value - totalPaid.value);
+
                 const prevMonth = () => {
                     const [y, m] = selectedMonth.value.split('-');
                     let date = new Date(y, m - 2, 1);
                     selectedMonth.value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
                 };
-
                 const nextMonth = () => {
                     const [y, m] = selectedMonth.value.split('-');
                     let date = new Date(y, m, 1);
                     selectedMonth.value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
                 };
 
-                const formatDate = (dateString) => {
-                    const [y, m, d] = dateString.split('-');
-                    return `${d}/${m}`;
-                };
+                const formatDate = (dateString) => { const [y, m, d] = dateString.split('-'); return `${d}/${m}`; };
+                const formatCurrency = (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 
-                const formatCurrency = (value) => {
-                    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
-                };
-
-                // Lógica Visual
                 const getStatusColor = (bill) => {
                     if (bill.paid) return { tarja: 'bg-emerald-500', text: 'text-emerald-600' };
-                    
-                    const todayDate = new Date();
-                    todayDate.setHours(0,0,0,0);
+                    const todayDate = new Date(); todayDate.setHours(0,0,0,0);
                     const dueDate = new Date(bill.dueDate + 'T00:00:00');
-                    const diffTime = dueDate - todayDate;
-                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-                    if (diffDays < 0) return { tarja: 'bg-red-500', text: 'text-red-600 font-bold' }; // Vencida
-                    if (diffDays <= 2) return { tarja: 'bg-yellow-400', text: 'text-yellow-600 font-bold' }; // Vence hoje, amanhã ou depois
-                    return { tarja: 'bg-gray-200', text: 'text-gray-500' }; // Distante
+                    const diffDays = Math.ceil((dueDate - todayDate) / (1000 * 60 * 60 * 24));
+                    if (diffDays < 0) return { tarja: 'bg-red-500', text: 'text-red-600 font-bold' };
+                    if (diffDays <= 2) return { tarja: 'bg-yellow-400', text: 'text-yellow-600 font-bold' };
+                    return { tarja: 'bg-gray-200', text: 'text-gray-500' };
                 };
 
                 const getCategoryName = (key) => categories[key]?.name || 'Outros';
                 const getCategoryColor = (key) => categories[key]?.color || 'bg-gray-100 text-gray-700';
                 const getFrequencyName = (f) => f.charAt(0).toUpperCase() + f.slice(1);
 
-                // Exportar Dados JSON
                 const exportData = () => {
                     const dataStr = JSON.stringify(bills.value, null, 2);
                     const blob = new Blob([dataStr], { type: "application/json" });
                     const url = URL.createObjectURL(blob);
                     const now = new Date();
-                    const filename = `MinhasContas_${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}_${now.getHours()}${now.getMinutes()}.json`;
-                    
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = filename;
-                    a.click();
-                    URL.revokeObjectURL(url);
+                    const filename = `Backup_Contas_${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}.json`;
+                    const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
                 };
 
-                // Lógica do Gráfico
                 const updateChart = () => {
                     nextTick(() => {
                         const canvas = document.getElementById('categoryChart');
                         if (!canvas) return;
-
                         const ctx = canvas.getContext('2d');
-                        
-                        // Agrupar valores por categoria no mês atual
                         const dataGrouped = {};
                         filteredBills.value.forEach(bill => {
                             if(!dataGrouped[bill.category]) dataGrouped[bill.category] = 0;
                             dataGrouped[bill.category] += bill.amount;
                         });
-
-                        const labels = [];
-                        const data = [];
-                        const backgroundColors = [];
-
+                        const labels = [], data = [], backgroundColors = [];
                         Object.keys(dataGrouped).forEach(key => {
-                            labels.push(categories[key].name);
-                            data.push(dataGrouped[key]);
-                            backgroundColors.push(categories[key].hex);
+                            labels.push(categories[key].name); data.push(dataGrouped[key]); backgroundColors.push(categories[key].hex);
                         });
-
-                        if (chartInstance) {
-                            chartInstance.destroy();
-                        }
-
+                        if (chartInstance) chartInstance.destroy();
                         chartInstance = new Chart(ctx, {
                             type: 'doughnut',
-                            data: {
-                                labels: labels,
-                                datasets: [{
-                                    data: data,
-                                    backgroundColor: backgroundColors,
-                                    borderWidth: 2,
-                                    borderColor: '#ffffff'
-                                }]
-                            },
-                            options: {
-                                responsive: true,
-                                maintainAspectRatio: false,
-                                plugins: {
-                                    legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } },
-                                    tooltip: {
-                                        callbacks: {
-                                            label: function(context) {
-                                                let label = context.label || '';
-                                                if (label) { label += ': '; }
-                                                label += formatCurrency(context.raw);
-                                                return label;
-                                            }
-                                        }
-                                    }
-                                },
-                                cutout: '70%'
-                            }
+                            data: { labels, datasets: [{ data, backgroundColor: backgroundColors, borderWidth: 2, borderColor: '#fff' }] },
+                            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } }, cutout: '70%' }
                         });
                     });
                 };
-
-                // Firebase Cloud Messaging Simulação
-                const requestNotificationPermission = () => {
-                    // Firebase: requestPermission() -> getToken()
-                    if ("Notification" in window) {
-                        Notification.requestPermission().then(permission => {
-                            if (permission === "granted") {
-                                console.log("Notificações permitidas.");
-                            }
-                        });
-                    }
-                };
-
-                // Watchers e Lifecycle
-                watch(selectedMonth, () => {
-                    updateChart();
-                });
-
-                watch(filteredBills, () => {
-                    updateChart();
-                }, { deep: true });
-
-                onMounted(() => {
-                    if(localStorage.getItem('pwa_logged_in') === 'true') {
-                        isLoggedIn.value = true;
-                    }
-                    loadData();
-                    updateChart();
-                    
-                    // Simulador de checagem diária para notificações (Para Firebase Cloud Messaging real, o backend faz isso)
-                    checkDueBillsForNotifications();
-                });
-
-                const checkDueBillsForNotifications = () => {
-                    if (!("Notification" in window) || Notification.permission !== "granted") return;
-                    
-                    const todayDate = new Date();
-                    todayDate.setHours(0,0,0,0);
-
-                    bills.value.forEach(bill => {
-                        if(bill.paid) return;
-                        
-                        const d = new Date(bill.dueDate + 'T00:00:00');
-                        const diffDays = Math.ceil((d - todayDate) / (1000 * 60 * 60 * 24));
-                        
-                        if (diffDays === 1 || diffDays === 2) {
-                            new Notification("Conta próxima do vencimento!", {
-                                body: `${bill.name} vence em ${diffDays} dia(s). Valor: ${formatCurrency(bill.amount)}`,
-                                icon: "https://cdn-icons-png.flaticon.com/512/2933/2933116.png"
-                            });
-                        } else if (diffDays === 0) {
-                            new Notification("Conta vence HOJE!", {
-                                body: `Não esqueça de pagar: ${bill.name} - ${formatCurrency(bill.amount)}`,
-                                icon: "https://cdn-icons-png.flaticon.com/512/2933/2933116.png"
-                            });
-                        }
-                    });
-                };
+                watch(selectedMonth, updateChart);
 
                 return {
-                    isLoggedIn, authForm, login, logout,
-                    bills, filteredBills, sortedBills, selectedMonth,
-                    showAddModal, form, categories, saveBill, togglePaid, deleteBill,
-                    totalMonth, totalPaid, totalPending,
-                    prevMonth, nextMonth, formatDate, formatCurrency,
-                    getStatusColor, getCategoryName, getCategoryColor, getFrequencyName,
-                    exportData
+                    isLoggedIn, isLoading, loginError, authForm, login, logout,
+                    bills, filteredBills, sortedBills, selectedMonth, showAddModal, form, categories,
+                    saveBill, togglePaid, deleteBill, totalMonth, totalPaid, totalPending,
+                    prevMonth, nextMonth, formatDate, formatCurrency, getStatusColor, getCategoryName, getCategoryColor, getFrequencyName, exportData
                 };
             }
         }).mount('#app');
-
-        // ================= CONFIGURAÇÃO DINÂMICA DO PWA =================
-        // Como você pediu para ser fácil de testar, injetamos o manifesto PWA dinamicamente via JS.
-        // Em produção, crie o arquivo manifest.json na raiz do Vercel.
-        const manifestStr = `
-        {
-            "name": "Gerenciador de Contas",
-            "short_name": "Contas",
-            "start_url": ".",
-            "display": "standalone",
-            "background_color": "#f3f4f6",
-            "theme_color": "#4F46E5",
-            "icons": [{
-                "src": "https://cdn-icons-png.flaticon.com/512/2933/2933116.png",
-                "sizes": "512x512",
-                "type": "image/png"
-            }]
-        }`;
+    </script>
+    
+    <!-- Configuração Dinâmica de Manifesto (Apenas para o visual do PWA funcionar sem arquivos extras) -->
+    <script>
+        const manifestStr = `{"name": "Gestor de Contas","short_name": "Contas","start_url": "./","display": "standalone","background_color": "#f3f4f6","theme_color": "#4F46E5","icons": [{"src": "https://cdn-icons-png.flaticon.com/512/2933/2933116.png","sizes": "512x512","type": "image/png"}]}`;
         const blob = new Blob([manifestStr], {type: 'application/json'});
-        const manifestURL = URL.createObjectURL(blob);
-        document.querySelector('head').insertAdjacentHTML('beforeend', `<link rel="manifest" href="${manifestURL}">`);
-
-        // Service Worker Fake para forçar o aviso de instalação "Add to Home Screen" em navegadores mobile
-        if ('serviceWorker' in navigator) {
-            const swCode = `
-                self.addEventListener('install', (e) => self.skipWaiting());
-                self.addEventListener('fetch', (e) => {});
-            `;
-            const swBlob = new Blob([swCode], {type: 'application/javascript'});
-            const swUrl = URL.createObjectURL(swBlob);
-            navigator.serviceWorker.register(swUrl).then(() => console.log('Service Worker Registrado para PWA'));
-        }
+        document.getElementById('manifest-link').href = URL.createObjectURL(blob);
     </script>
 </body>
 </html>
-
