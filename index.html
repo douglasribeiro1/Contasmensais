@@ -268,7 +268,7 @@
         // Firebase Cloud Messaging
         import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-messaging.js";
 
-        // SUA CONFIGURAÇÃO DO FIREBASE (Colada exatamente como você mandou)
+        // CONFIGURAÇÃO DO FIREBASE
         const firebaseConfig = {
             apiKey: "AIzaSyD4jGS3fecgaK5fsUYfH_fdtwKwpLud0GE",
             authDomain: "monthly-bills-a70ee.firebaseapp.com",
@@ -283,18 +283,19 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
         
-        // Opcional: Variável para o Messaging (só ativa se suportado)
+        // Inicializa o Messaging (só ativa se suportado pelo navegador)
         let messaging = null;
         try { messaging = getMessaging(app); } catch (e) { console.log("FCM não suportado neste navegador", e); }
 
         createApp({
             setup() {
+                // ================== VARIÁVEIS DE ESTADO (REATIVIDADE) ==================
                 const isLoggedIn = ref(false);
                 const isLoading = ref(false);
                 const loginError = ref('');
                 const authForm = ref({ email: '', password: '' });
                 const currentUser = ref(null);
-                let unsubscribeSnapshot = null; // Para limpar o listener do banco
+                let unsubscribeSnapshot = null;
 
                 const bills = ref([]);
                 const showAddModal = ref(false);
@@ -315,176 +316,7 @@
                 const form = ref(getEmptyForm());
                 let chartInstance = null;
 
-                // --- OBSERVA O ESTADO DO USUÁRIO ---
-                onMounted(() => {
-                    onAuthStateChanged(auth, (user) => {
-                        if (user) {
-                            currentUser.value = user;
-                            isLoggedIn.value = true;
-                            loadData(user.uid);
-                            setupNotifications(); // Pede permissão FCM
-                        } else {
-                            currentUser.value = null;
-                            isLoggedIn.value = false;
-                            bills.value = [];
-                            if (unsubscribeSnapshot) unsubscribeSnapshot();
-                        }
-                    });
-                });
-
-                // --- AUTENTICAÇÃO ---
-                const login = async () => {
-                    isLoading.value = true;
-                    loginError.value = '';
-                    try {
-                        await signInWithEmailAndPassword(auth, authForm.value.email, authForm.value.password);
-                        authForm.value = { email: '', password: '' };
-                    } catch (error) {
-                        loginError.value = 'Erro: Verifique e-mail e senha. Crie a conta no Firebase primeiro.';
-                        console.error(error);
-                    } finally {
-                        isLoading.value = false;
-                    }
-                };
-
-                const logout = async () => {
-                    await signOut(auth);
-                };
-
-                // --- BANCO DE DADOS (FIRESTORE) ---
-                const loadData = (uid) => {
-                    // Escuta as contas APENAS do usuário logado em tempo real
-                    const billsRef = collection(db, "users", uid, "bills");
-                    unsubscribeSnapshot = onSnapshot(billsRef, (snapshot) => {
-                        const loadedBills = [];
-                        snapshot.forEach((doc) => {
-                            loadedBills.push({ id: doc.id, ...doc.data() });
-                        });
-                        bills.value = loadedBills;
-                        updateChart();
-                        checkDueBillsForLocalNotifications(); // Checagem local automática
-                    });
-                };
-
-                const saveBill = async () => {
-                    if (form.value.name && form.value.dueDate && form.value.amount && currentUser.value) {
-                        isLoading.value = true;
-                        try {
-                            const newBill = {
-                                ...form.value,
-                                amount: parseFloat(form.value.amount),
-                                createdAt: new Date().toISOString()
-                            };
-                            // Adiciona no Firebase (gera ID automático)
-                            await addDoc(collection(db, "users", currentUser.value.uid, "bills"), newBill);
-                            showAddModal.value = false;
-                            form.value = getEmptyForm();
-                        } catch(e) { console.error("Erro ao salvar:", e); }
-                        finally { isLoading.value = false; }
-                    }
-                };
-
-                const deleteBill = async (id) => {
-                    if(confirm('Tem certeza que deseja excluir esta conta?')){
-                        await deleteDoc(doc(db, "users", currentUser.value.uid, "bills", id));
-                    }
-                };
-
-                const togglePaid = async (bill) => {
-                    const newValue = !bill.paid;
-                    const billRef = doc(db, "users", currentUser.value.uid, "bills", bill.id);
-                    
-                    try {
-                        await updateDoc(billRef, { paid: newValue });
-                        
-                        // Gerador de Fatura Recorrente no banco de dados real
-                        if (newValue && bill.frequency !== 'unica' && !bill.nextGenerated) {
-                            await updateDoc(billRef, { nextGenerated: true });
-                            generateNextBillingCycle(bill);
-                        }
-                    } catch(e) { console.error("Erro ao atualizar status:", e); }
-                };
-
-                const generateNextBillingCycle = async (bill) => {
-                    const nextDate = new Date(bill.dueDate + 'T12:00:00');
-                    switch(bill.frequency) {
-                        case 'semanal': nextDate.setDate(nextDate.getDate() + 7); break;
-                        case 'quinzenal': nextDate.setDate(nextDate.getDate() + 15); break;
-                        case 'mensal': nextDate.setMonth(nextDate.getMonth() + 1); break;
-                        case 'bimestral': nextDate.setMonth(nextDate.getMonth() + 2); break;
-                        case 'trimestral': nextDate.setMonth(nextDate.getMonth() + 3); break;
-                        case 'semestral': nextDate.setMonth(nextDate.getMonth() + 6); break;
-                        case 'anual': nextDate.setFullYear(nextDate.getFullYear() + 1); break;
-                    }
-                    
-                    const nextBill = {
-                        name: bill.name,
-                        amount: bill.amount,
-                        category: bill.category,
-                        frequency: bill.frequency,
-                        method: bill.method,
-                        dueDate: nextDate.toISOString().split('T')[0],
-                        paid: false,
-                        nextGenerated: false,
-                        createdAt: new Date().toISOString()
-                    };
-                    
-                    await addDoc(collection(db, "users", currentUser.value.uid, "bills"), nextBill);
-                };
-
-                // --- NOTIFICAÇÕES (FCM + LOCAL) ---
-                const setupNotifications = async () => {
-                    if (!messaging) return;
-                    try {
-                        const permission = await Notification.requestPermission();
-                        if (permission === 'granted') {
-                            // IMPORTANTE: Insira sua chave VAPID gerada no console do Firebase aqui
-                            // Vá em Project Settings > Cloud Messaging > Web configuration > Generate key pair
-                            const vapidKey = "BH4-OXG0g7btZDkbaIgUPJyqrgsqq9INyB7f52rRc2IakXkByvDPQRbH8vbuqPyK0NHP_YIUtRz7B6_pruED5jI"; 
-                            
-                            if(vapidKey !== BH4-OXG0g7btZDkbaIgUPJyqrgsqq9INyB7f52rRc2IakXkByvDPQRbH8vbuqPyK0NHP_YIUtRz7B6_pruED5jI") {
-                                const token = await getToken(messaging, { vapidKey: vapidKey });
-                                console.log("FCM Token (pode ser usado para enviar mensagens do console):", token);
-                            }
-
-                            // Ouve mensagens enviadas pelo Firebase Console enquanto o app está ABERTO
-                            onMessage(messaging, (payload) => {
-                                console.log('Mensagem recebida no app aberto: ', payload);
-                                alert(`Notificação do Firebase: ${payload.notification.title} - ${payload.notification.body}`);
-                            });
-                        }
-                    } catch (error) {
-                        console.error('Erro ao configurar FCM:', error);
-                    }
-                };
-
-                // Lógica Inteligente Offline (Avisa sobre contas vencendo só de abrir o app)
-                const checkDueBillsForLocalNotifications = () => {
-                    if (!("Notification" in window) || Notification.permission !== "granted") return;
-                    const todayDate = new Date();
-                    todayDate.setHours(0,0,0,0);
-
-                    bills.value.forEach(bill => {
-                        if(bill.paid) return;
-                        const d = new Date(bill.dueDate + 'T00:00:00');
-                        const diffDays = Math.ceil((d - todayDate) / (1000 * 60 * 60 * 24));
-                        
-                        // Usamos localStorage para não ficar notificando a mesma conta toda hora que atualizar o DB
-                        const alertKey = `alert_${bill.id}_${diffDays}`;
-                        if (localStorage.getItem(alertKey)) return;
-
-                        if (diffDays === 1 || diffDays === 2) {
-                            new Notification("Conta próxima do vencimento!", { body: `${bill.name} vence em ${diffDays} dia(s).` });
-                            localStorage.setItem(alertKey, 'true');
-                        } else if (diffDays === 0) {
-                            new Notification("Conta vence HOJE!", { body: `Não esqueça de pagar: ${bill.name}` });
-                            localStorage.setItem(alertKey, 'true');
-                        }
-                    });
-                };
-
-
-                // --- COMPUTAÇÕES E GRÁFICOS (Mantidas iguais, funcionam perfeitamente) ---
+                // ================== COMPUTAÇÕES (REATIVIDADE DE DADOS) ==================
                 const filteredBills = computed(() => {
                     if(!selectedMonth.value) return [];
                     const [year, month] = selectedMonth.value.split('-');
@@ -505,11 +337,13 @@
                 const totalPaid = computed(() => filteredBills.value.filter(b => b.paid).reduce((acc, curr) => acc + curr.amount, 0));
                 const totalPending = computed(() => totalMonth.value - totalPaid.value);
 
+                // ================== FUNÇÕES AUXILIARES ==================
                 const prevMonth = () => {
                     const [y, m] = selectedMonth.value.split('-');
                     let date = new Date(y, m - 2, 1);
                     selectedMonth.value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
                 };
+                
                 const nextMonth = () => {
                     const [y, m] = selectedMonth.value.split('-');
                     let date = new Date(y, m, 1);
@@ -542,6 +376,31 @@
                     const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
                 };
 
+                // Lógica Inteligente Offline (Avisa sobre contas vencendo só de abrir o app)
+                const checkDueBillsForLocalNotifications = () => {
+                    if (!("Notification" in window) || Notification.permission !== "granted") return;
+                    const todayDate = new Date();
+                    todayDate.setHours(0,0,0,0);
+
+                    bills.value.forEach(bill => {
+                        if(bill.paid) return;
+                        const d = new Date(bill.dueDate + 'T00:00:00');
+                        const diffDays = Math.ceil((d - todayDate) / (1000 * 60 * 60 * 24));
+                        
+                        // Usamos localStorage para não ficar notificando a mesma conta toda hora
+                        const alertKey = `alert_${bill.id}_${diffDays}`;
+                        if (localStorage.getItem(alertKey)) return;
+
+                        if (diffDays === 1 || diffDays === 2) {
+                            new Notification("Conta próxima do vencimento!", { body: `${bill.name} vence em ${diffDays} dia(s).` });
+                            localStorage.setItem(alertKey, 'true');
+                        } else if (diffDays === 0) {
+                            new Notification("Conta vence HOJE!", { body: `Não esqueça de pagar: ${bill.name}` });
+                            localStorage.setItem(alertKey, 'true');
+                        }
+                    });
+                };
+
                 const updateChart = () => {
                     nextTick(() => {
                         const canvas = document.getElementById('categoryChart');
@@ -564,8 +423,150 @@
                         });
                     });
                 };
-                watch(selectedMonth, updateChart);
 
+                const generateNextBillingCycle = async (bill) => {
+                    const nextDate = new Date(bill.dueDate + 'T12:00:00');
+                    switch(bill.frequency) {
+                        case 'semanal': nextDate.setDate(nextDate.getDate() + 7); break;
+                        case 'quinzenal': nextDate.setDate(nextDate.getDate() + 15); break;
+                        case 'mensal': nextDate.setMonth(nextDate.getMonth() + 1); break;
+                        case 'bimestral': nextDate.setMonth(nextDate.getMonth() + 2); break;
+                        case 'trimestral': nextDate.setMonth(nextDate.getMonth() + 3); break;
+                        case 'semestral': nextDate.setMonth(nextDate.getMonth() + 6); break;
+                        case 'anual': nextDate.setFullYear(nextDate.getFullYear() + 1); break;
+                    }
+                    
+                    const nextBill = {
+                        name: bill.name,
+                        amount: bill.amount,
+                        category: bill.category,
+                        frequency: bill.frequency,
+                        method: bill.method,
+                        dueDate: nextDate.toISOString().split('T')[0],
+                        paid: false,
+                        nextGenerated: false,
+                        createdAt: new Date().toISOString()
+                    };
+                    
+                    await addDoc(collection(db, "users", currentUser.value.uid, "bills"), nextBill);
+                };
+
+                // ================== AÇÕES DE BANCO DE DADOS E NOTIFICAÇÕES ==================
+                const setupNotifications = async () => {
+                    if (!messaging) return;
+                    try {
+                        const permission = await Notification.requestPermission();
+                        if (permission === 'granted') {
+                            // AQUI ESTÁ A VAPID KEY FORNECIDA:
+                            const vapidKey = "BH4-OXG0g7btZDkbaIgUPJyqrgsqq9INyB7f52rRc2IakXkByvDPQRbH8vbuqPyK0NHP_YIUtRz7B6_pruED5jI"; 
+                            
+                            const token = await getToken(messaging, { vapidKey: vapidKey });
+                            console.log("FCM Token ativo:", token);
+
+                            // Ouve mensagens enviadas pelo Firebase Console enquanto o app está ABERTO
+                            onMessage(messaging, (payload) => {
+                                console.log('Mensagem recebida no app aberto: ', payload);
+                                alert(`Notificação do Firebase: ${payload.notification.title} - ${payload.notification.body}`);
+                            });
+                        }
+                    } catch (error) {
+                        console.error('Erro ao configurar FCM:', error);
+                    }
+                };
+
+                const loadData = (uid) => {
+                    // Escuta as contas APENAS do usuário logado em tempo real
+                    const billsRef = collection(db, "users", uid, "bills");
+                    unsubscribeSnapshot = onSnapshot(billsRef, (snapshot) => {
+                        const loadedBills = [];
+                        snapshot.forEach((doc) => {
+                            loadedBills.push({ id: doc.id, ...doc.data() });
+                        });
+                        bills.value = loadedBills;
+                        updateChart();
+                        checkDueBillsForLocalNotifications(); // Agora é chamado de forma segura
+                    });
+                };
+
+                const saveBill = async () => {
+                    if (form.value.name && form.value.dueDate && form.value.amount && currentUser.value) {
+                        isLoading.value = true;
+                        try {
+                            const newBill = {
+                                ...form.value,
+                                amount: parseFloat(form.value.amount),
+                                createdAt: new Date().toISOString()
+                            };
+                            await addDoc(collection(db, "users", currentUser.value.uid, "bills"), newBill);
+                            showAddModal.value = false;
+                            form.value = getEmptyForm();
+                        } catch(e) { console.error("Erro ao salvar:", e); }
+                        finally { isLoading.value = false; }
+                    }
+                };
+
+                const deleteBill = async (id) => {
+                    if(confirm('Tem certeza que deseja excluir esta conta?')){
+                        await deleteDoc(doc(db, "users", currentUser.value.uid, "bills", id));
+                    }
+                };
+
+                const togglePaid = async (bill) => {
+                    const newValue = !bill.paid;
+                    const billRef = doc(db, "users", currentUser.value.uid, "bills", bill.id);
+                    
+                    try {
+                        await updateDoc(billRef, { paid: newValue });
+                        
+                        // Gerador de Fatura Recorrente no banco de dados
+                        if (newValue && bill.frequency !== 'unica' && !bill.nextGenerated) {
+                            await updateDoc(billRef, { nextGenerated: true });
+                            generateNextBillingCycle(bill);
+                        }
+                    } catch(e) { console.error("Erro ao atualizar status:", e); }
+                };
+
+                // ================== AÇÕES DE AUTENTICAÇÃO ==================
+                const login = async () => {
+                    isLoading.value = true;
+                    loginError.value = '';
+                    try {
+                        await signInWithEmailAndPassword(auth, authForm.value.email, authForm.value.password);
+                        authForm.value = { email: '', password: '' };
+                    } catch (error) {
+                        loginError.value = 'Erro: Verifique e-mail e senha. Crie a conta no Firebase primeiro.';
+                        console.error(error);
+                    } finally {
+                        isLoading.value = false;
+                    }
+                };
+
+                const logout = async () => {
+                    await signOut(auth);
+                };
+
+                // ================== GATILHOS E CICLO DE VIDA (LIFECYCLE) ==================
+                onMounted(() => {
+                    onAuthStateChanged(auth, (user) => {
+                        if (user) {
+                            currentUser.value = user;
+                            isLoggedIn.value = true;
+                            loadData(user.uid);
+                            setupNotifications(); // Ativa permissões de notificação Push
+                        } else {
+                            currentUser.value = null;
+                            isLoggedIn.value = false;
+                            bills.value = [];
+                            if (unsubscribeSnapshot) unsubscribeSnapshot();
+                        }
+                    });
+                });
+
+                // Observa mudanças de mês e dados para refazer o gráfico instantaneamente
+                watch(selectedMonth, updateChart);
+                watch(filteredBills, updateChart, { deep: true });
+
+                // ================== RETORNO PARA O HTML ==================
                 return {
                     isLoggedIn, isLoading, loginError, authForm, login, logout,
                     bills, filteredBills, sortedBills, selectedMonth, showAddModal, form, categories,
@@ -576,7 +577,7 @@
         }).mount('#app');
     </script>
     
-    <!-- Configuração Dinâmica de Manifesto (Apenas para o visual do PWA funcionar sem arquivos extras) -->
+    <!-- Configuração Dinâmica de Manifesto -->
     <script>
         const manifestStr = `{"name": "Gestor de Contas","short_name": "Contas","start_url": "./","display": "standalone","background_color": "#f3f4f6","theme_color": "#4F46E5","icons": [{"src": "https://cdn-icons-png.flaticon.com/512/2933/2933116.png","sizes": "512x512","type": "image/png"}]}`;
         const blob = new Blob([manifestStr], {type: 'application/json'});
