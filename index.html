@@ -71,8 +71,9 @@
                             <h1 class="text-xl font-bold tracking-wide">Gestor de Contas</h1>
                         </div>
                         <div class="flex items-center gap-3">
-                            <button @click="exportData" class="p-2 bg-white/20 rounded-full hover:bg-white/30 transition" title="Backup (JSON)">
-                                <i class="ph ph-download-simple text-xl"></i>
+                            <!-- NOVO BOTÃO DE EXPORTAR TUDO PARA A AGENDA -->
+                            <button @click="showExportModal = true" class="p-2 bg-white/20 rounded-full hover:bg-white/30 transition" title="Exportar para Agenda">
+                                <i class="ph ph-calendar-plus text-xl"></i>
                             </button>
                             <button @click="logout" class="p-2 bg-white/20 rounded-full hover:bg-white/30 transition" title="Sair">
                                 <i class="ph ph-sign-out text-xl"></i>
@@ -157,11 +158,18 @@
                                     </div>
                                     <!-- AÇÕES DA CONTA -->
                                     <div class="flex items-center gap-3 mt-3">
+                                        <!-- BOTÃO EDITAR -->
+                                        <button @click="openEditModal(bill)" class="text-xs text-blue-500 hover:text-blue-700 flex items-center gap-1 transition-colors">
+                                            <i class="ph ph-pencil-simple"></i> Editar
+                                        </button>
+                                        <span class="text-gray-300">|</span>
+                                        <!-- BOTÃO EXCLUIR -->
                                         <button @click="deleteBill(bill.id)" class="text-xs text-red-500 hover:text-red-700 flex items-center gap-1 transition-colors">
                                             <i class="ph ph-trash"></i> Excluir
                                         </button>
-                                        <span class="text-gray-300">|</span>
-                                        <button @click="addToCalendar(bill)" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1 transition-colors">
+                                        <span class="text-gray-300 hidden sm:inline">|</span>
+                                        <!-- BOTÃO AGENDA INDIVIDUAL -->
+                                        <button @click="addToCalendar(bill)" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium items-center gap-1 transition-colors hidden sm:flex">
                                             <i class="ph ph-calendar-plus text-sm"></i> Salvar na Agenda
                                         </button>
                                     </div>
@@ -185,17 +193,17 @@
             </main>
 
             <!-- FAB -->
-            <button @click="showAddModal = true" class="fixed bottom-6 right-6 md:bottom-8 md:right-8 bg-primary text-white w-14 h-14 rounded-full shadow-lg shadow-indigo-300 flex items-center justify-center hover:bg-indigo-700 hover:scale-105 transition-transform z-40">
+            <button @click="openAddModal" class="fixed bottom-6 right-6 md:bottom-8 md:right-8 bg-primary text-white w-14 h-14 rounded-full shadow-lg shadow-indigo-300 flex items-center justify-center hover:bg-indigo-700 hover:scale-105 transition-transform z-40">
                 <i class="ph ph-plus text-2xl font-bold"></i>
             </button>
         </div>
 
-        <!-- ================= MODAL DE NOVA CONTA ================= -->
+        <!-- ================= MODAL DE NOVA/EDITAR CONTA ================= -->
         <div v-if="showAddModal" class="fixed inset-0 bg-black/50 z-50 flex flex-col justify-end md:justify-center items-center backdrop-blur-sm p-0 md:p-4">
             <div class="bg-white w-full md:max-w-md rounded-t-3xl md:rounded-3xl shadow-2xl flex flex-col max-h-[90vh]">
                 <div class="p-5 border-b border-gray-100 flex justify-between items-center shrink-0">
-                    <h2 class="text-lg font-bold text-gray-800">Nova Conta</h2>
-                    <button @click="showAddModal = false" class="p-2 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200 transition">
+                    <h2 class="text-lg font-bold text-gray-800">{{ editingBillId ? 'Editar Conta' : 'Nova Conta' }}</h2>
+                    <button @click="closeAddModal" class="p-2 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200 transition">
                         <i class="ph ph-x text-lg"></i>
                     </button>
                 </div>
@@ -235,7 +243,8 @@
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Método</label>
                                 <select v-model="form.method" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary bg-white outline-none">
-                                    <option value="debito">Débito/Pix</option>
+                                    <option value="debito">Débito/Pix/Dinheiro</option>
+                                    <option value="boleto">Boleto</option>
                                     <option value="credito">Crédito</option>
                                 </select>
                             </div>
@@ -255,27 +264,60 @@
 
                         <button type="submit" :disabled="isLoading" class="w-full bg-secondary hover:bg-emerald-600 text-white font-bold py-3.5 px-4 rounded-xl transition mt-6 shadow-lg shadow-emerald-200 disabled:opacity-70 flex justify-center">
                             <span v-if="isLoading"><i class="ph ph-spinner animate-spin text-xl"></i></span>
-                            <span v-else>Salvar Conta</span>
+                            <span v-else>{{ editingBillId ? 'Atualizar Conta' : 'Salvar Conta' }}</span>
                         </button>
                     </form>
                 </div>
             </div>
         </div>
+
+        <!-- ================= MODAL DE EXPORTAR TODAS PARA AGENDA ================= -->
+        <div v-if="showExportModal" class="fixed inset-0 bg-black/50 z-50 flex flex-col justify-end md:justify-center items-center backdrop-blur-sm p-0 md:p-4">
+            <div class="bg-white w-full md:max-w-md rounded-t-3xl md:rounded-3xl shadow-2xl flex flex-col">
+                <div class="p-5 border-b border-gray-100 flex justify-between items-center">
+                    <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2">
+                        <i class="ph ph-calendar-plus text-primary"></i> Gerar Lembretes
+                    </h2>
+                    <button @click="showExportModal = false" class="p-2 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200 transition">
+                        <i class="ph ph-x text-lg"></i>
+                    </button>
+                </div>
+                <div class="p-5 space-y-4">
+                    <p class="text-sm text-gray-600 mb-4">Selecione quais contas deseja incluir no arquivo único de calendário:</p>
+                    
+                    <label class="flex items-center p-4 border rounded-xl cursor-pointer hover:bg-gray-50 transition-colors" :class="{'border-primary bg-indigo-50': exportOption === 'all'}">
+                        <input type="radio" v-model="exportOption" value="all" class="mr-3 text-primary focus:ring-primary w-5 h-5">
+                        <div>
+                            <span class="block font-semibold text-gray-800">Todas as Contas</span>
+                            <span class="text-xs text-gray-500">Inclui Pix, Boleto, Dinheiro e Cartão de Crédito</span>
+                        </div>
+                    </label>
+
+                    <label class="flex items-center p-4 border rounded-xl cursor-pointer hover:bg-gray-50 transition-colors" :class="{'border-primary bg-indigo-50': exportOption === 'no_credit'}">
+                        <input type="radio" v-model="exportOption" value="no_credit" class="mr-3 text-primary focus:ring-primary w-5 h-5">
+                        <div>
+                            <span class="block font-semibold text-gray-800">Sem Cartão de Crédito</span>
+                            <span class="text-xs text-gray-500">Apenas Débito, Pix, Dinheiro e Boleto</span>
+                        </div>
+                    </label>
+
+                    <button @click="processExportAll" class="w-full bg-primary hover:bg-indigo-700 text-white font-bold py-3.5 px-4 rounded-xl transition mt-4 shadow-lg shadow-indigo-200 flex items-center justify-center gap-2">
+                        <i class="ph ph-download-simple text-xl"></i> Baixar Arquivo (.ics)
+                    </button>
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <!-- Script Principal com Firebase Modular (v10) e Vue 3 -->
     <script type="module">
         import { createApp, ref, computed, watch, onMounted, nextTick } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js';
         
-        // Firebase Core & Auth (Mantido)
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
-        
-        // Firebase Firestore (Mantido)
         import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
         
-        // Removido o Cloud Messaging
-
         const firebaseConfig = {
             apiKey: "AIzaSyD4jGS3fecgaK5fsUYfH_fdtwKwpLud0GE",
             authDomain: "monthly-bills-a70ee.firebaseapp.com",
@@ -298,7 +340,14 @@
                 const currentUser = ref(null);
                 let unsubscribeSnapshot = null;
                 const bills = ref([]);
+                
                 const showAddModal = ref(false);
+                const editingBillId = ref(null); // Variável para controlar edição
+
+                // Variáveis do Modal de Exportação
+                const showExportModal = ref(false);
+                const exportOption = ref('all'); // 'all' ou 'no_credit'
+
                 const today = new Date();
                 const selectedMonth = ref(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`);
 
@@ -358,14 +407,13 @@
                 // ==========================================
                 // LÓGICA DE EXPORTAÇÃO PARA GOOGLE AGENDA (.ICS)
                 // ==========================================
-                const addToCalendar = (bill) => {
+                
+                // Função auxiliar que gera as regras ICS de UM evento
+                const generateIcsEvent = (bill) => {
                     const [year, month, day] = bill.dueDate.split('-');
-
-                    // Formata data e hora para o padrão ICS (horário fixo às 09:00 e término às 10:00)
                     const dtstart = `${year}${month}${day}T090000`;
                     const dtend = `${year}${month}${day}T100000`;
 
-                    // Define as regras de recorrência com base na frequência da conta
                     let rrule = '';
                     switch(bill.frequency) {
                         case 'semanal': rrule = 'RRULE:FREQ=WEEKLY\n'; break;
@@ -377,11 +425,7 @@
                         case 'anual': rrule = 'RRULE:FREQ=YEARLY\n'; break;
                     }
 
-                    // Monta o arquivo ICS
-                    const icsContent = `BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//Gestor de Contas PWA//PT
-BEGIN:VEVENT
+                    return `BEGIN:VEVENT
 UID:${bill.id || Date.now()}@gestordecontas.app
 DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0]}Z
 DTSTART:${dtstart}
@@ -403,26 +447,48 @@ TRIGGER:-PT0M
 ACTION:DISPLAY
 DESCRIPTION:Lembrete de Conta (HOJE)
 END:VALARM
-END:VEVENT
-END:VCALENDAR`;
+END:VEVENT`;
+                };
 
-                    // Força o download/abertura do arquivo ICS
-                    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+                // Função auxiliar que força o download de um arquivo .ics
+                const downloadIcs = (content, filename) => {
+                    const blob = new Blob([content], { type: 'text/calendar;charset=utf-8' });
                     const link = document.createElement('a');
                     link.href = URL.createObjectURL(blob);
-                    link.download = `Lembrete_${bill.name.replace(/\s+/g, '_')}.ics`;
+                    link.download = filename;
                     document.body.appendChild(link);
                     link.click();
                     document.body.removeChild(link);
                 };
 
-                const exportData = () => {
-                    const dataStr = JSON.stringify(bills.value, null, 2);
-                    const blob = new Blob([dataStr], { type: "application/json" });
-                    const url = URL.createObjectURL(blob);
-                    const now = new Date();
-                    const filename = `Backup_Contas_${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}.json`;
-                    const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
+                // Exportar conta individual
+                const addToCalendar = (bill) => {
+                    const icsContent = `BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Gestor de Contas PWA//PT\n${generateIcsEvent(bill)}\nEND:VCALENDAR`;
+                    downloadIcs(icsContent, `Lembrete_${bill.name.replace(/\s+/g, '_')}.ics`);
+                };
+
+                // Exportar todas as contas juntas
+                const processExportAll = () => {
+                    let billsToExport = bills.value; // Pega o total de contas salvas
+                    
+                    if (exportOption.value === 'no_credit') {
+                        // Ignora todas as contas que o método está marcado como "Crédito"
+                        billsToExport = billsToExport.filter(b => b.method !== 'credito');
+                    }
+
+                    if (billsToExport.length === 0) {
+                        alert("Não há contas correspondentes ao filtro escolhido.");
+                        return;
+                    }
+
+                    // Gera os blocos VEVENT de cada conta
+                    const eventsString = billsToExport.map(b => generateIcsEvent(b)).join('\n');
+                    
+                    // Une no calendário final
+                    const icsContent = `BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Gestor de Contas PWA//PT\n${eventsString}\nEND:VCALENDAR`;
+                    
+                    downloadIcs(icsContent, 'Todas_As_Contas_Agenda.ics');
+                    showExportModal.value = false;
                 };
 
                 const updateChart = () => {
@@ -467,14 +533,45 @@ END:VCALENDAR`;
                     });
                 };
 
+                // ==========================================
+                // LÓGICA DE MODAIS E SALVAMENTO (NOVO/EDITAR)
+                // ==========================================
+                const openAddModal = () => {
+                    form.value = getEmptyForm();
+                    editingBillId.value = null;
+                    showAddModal.value = true;
+                };
+
+                const openEditModal = (bill) => {
+                    // Preenche o form com os dados da conta escolhida
+                    form.value = { ...bill };
+                    editingBillId.value = bill.id;
+                    showAddModal.value = true;
+                };
+
+                const closeAddModal = () => {
+                    showAddModal.value = false;
+                    form.value = getEmptyForm();
+                    editingBillId.value = null;
+                };
+
                 const saveBill = async () => {
                     if (form.value.name && form.value.dueDate && form.value.amount && currentUser.value) {
                         isLoading.value = true;
                         try {
-                            const newBill = { ...form.value, amount: parseFloat(form.value.amount), createdAt: new Date().toISOString() };
-                            await addDoc(collection(db, "users", currentUser.value.uid, "bills"), newBill);
-                            showAddModal.value = false;
-                            form.value = getEmptyForm();
+                            const billData = { ...form.value, amount: parseFloat(form.value.amount) };
+                            
+                            if (editingBillId.value) {
+                                // MODO EDIÇÃO: Atualiza a conta existente
+                                const billRef = doc(db, "users", currentUser.value.uid, "bills", editingBillId.value);
+                                await updateDoc(billRef, billData);
+                            } else {
+                                // MODO CRIAÇÃO: Adiciona uma nova conta
+                                billData.createdAt = new Date().toISOString();
+                                await addDoc(collection(db, "users", currentUser.value.uid, "bills"), billData);
+                            }
+                            
+                            closeAddModal();
                         } catch(e) { console.error("Erro ao salvar:", e); }
                         finally { isLoading.value = false; }
                     }
@@ -516,7 +613,23 @@ END:VCALENDAR`;
 
                 watch(selectedMonth, updateChart); watch(filteredBills, updateChart, { deep: true });
 
-                return { isLoggedIn, isLoading, loginError, authForm, login, logout, bills, filteredBills, sortedBills, selectedMonth, showAddModal, form, categories, saveBill, togglePaid, deleteBill, totalMonth, totalPaid, totalPending, prevMonth, nextMonth, formatDate, formatCurrency, getStatusColor, getCategoryName, getCategoryColor, getFrequencyName, exportData, addToCalendar };
+                return { 
+                    isLoggedIn, isLoading, loginError, authForm, login, logout, 
+                    bills, filteredBills, sortedBills, selectedMonth, 
+                    showAddModal, form, categories, saveBill, togglePaid, deleteBill, 
+                    totalMonth, totalPaid, totalPending, prevMonth, nextMonth, formatDate, formatCurrency, 
+                    getStatusColor, getCategoryName, getCategoryColor, getFrequencyName, 
+                    addToCalendar,
+                    
+                    // Novas variáveis/métodos do escopo
+                    editingBillId,
+                    openAddModal,
+                    openEditModal,
+                    closeAddModal,
+                    showExportModal,
+                    exportOption,
+                    processExportAll
+                };
             }
         }).mount('#app');
     </script>
