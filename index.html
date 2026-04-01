@@ -155,6 +155,16 @@
                                             {{ getFrequencyName(bill.frequency) }}
                                         </span>
                                     </div>
+                                    <!-- AÇÕES DA CONTA -->
+                                    <div class="flex items-center gap-3 mt-3">
+                                        <button @click="deleteBill(bill.id)" class="text-xs text-red-500 hover:text-red-700 flex items-center gap-1 transition-colors">
+                                            <i class="ph ph-trash"></i> Excluir
+                                        </button>
+                                        <span class="text-gray-300">|</span>
+                                        <button @click="addToCalendar(bill)" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1 transition-colors">
+                                            <i class="ph ph-calendar-plus text-sm"></i> Salvar na Agenda
+                                        </button>
+                                    </div>
                                 </div>
                                 
                                 <div class="flex flex-col items-end shrink-0 gap-2">
@@ -167,7 +177,6 @@
                                             <i class="ph-bold ph-check text-white opacity-0 peer-checked:opacity-100 text-sm"></i>
                                         </div>
                                     </label>
-                                    <button @click="deleteBill(bill.id)" class="text-xs text-red-400 hover:text-red-600 underline mt-1">Excluir</button>
                                 </div>
                             </div>
                         </div>
@@ -183,7 +192,6 @@
 
         <!-- ================= MODAL DE NOVA CONTA ================= -->
         <div v-if="showAddModal" class="fixed inset-0 bg-black/50 z-50 flex flex-col justify-end md:justify-center items-center backdrop-blur-sm p-0 md:p-4">
-            <!-- (Conteúdo do Modal mantido idêntico) -->
             <div class="bg-white w-full md:max-w-md rounded-t-3xl md:rounded-3xl shadow-2xl flex flex-col max-h-[90vh]">
                 <div class="p-5 border-b border-gray-100 flex justify-between items-center shrink-0">
                     <h2 class="text-lg font-bold text-gray-800">Nova Conta</h2>
@@ -255,31 +263,18 @@
         </div>
     </div>
 
-    <!-- Script para Registrar o Service Worker (Essencial para PWA e Notificações) -->
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                // Registra explicitamente o arquivo que você criou na raiz
-                navigator.serviceWorker.register('./firebase-messaging-sw.js')
-                    .then(registration => console.log('Service Worker registrado com sucesso:', registration.scope))
-                    .catch(error => console.log('Falha ao registrar o Service Worker:', error));
-            });
-        }
-    </script>
-
     <!-- Script Principal com Firebase Modular (v10) e Vue 3 -->
     <script type="module">
         import { createApp, ref, computed, watch, onMounted, nextTick } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js';
         
-        // Firebase Core & Auth
+        // Firebase Core & Auth (Mantido)
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
         
-        // Firebase Firestore (Adicionado 'setDoc' para salvar o token)
-        import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        // Firebase Firestore (Mantido)
+        import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
         
-        // Firebase Cloud Messaging
-        import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-messaging.js";
+        // Removido o Cloud Messaging
 
         const firebaseConfig = {
             apiKey: "AIzaSyD4jGS3fecgaK5fsUYfH_fdtwKwpLud0GE",
@@ -293,9 +288,6 @@
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        
-        let messaging = null;
-        try { messaging = getMessaging(app); } catch (e) { console.log("FCM não suportado neste navegador", e); }
 
         createApp({
             setup() {
@@ -363,6 +355,67 @@
                 const getCategoryColor = (key) => categories[key]?.color || 'bg-gray-100 text-gray-700';
                 const getFrequencyName = (f) => f.charAt(0).toUpperCase() + f.slice(1);
 
+                // ==========================================
+                // LÓGICA DE EXPORTAÇÃO PARA GOOGLE AGENDA (.ICS)
+                // ==========================================
+                const addToCalendar = (bill) => {
+                    const [year, month, day] = bill.dueDate.split('-');
+
+                    // Formata data e hora para o padrão ICS (horário fixo às 09:00 e término às 10:00)
+                    const dtstart = `${year}${month}${day}T090000`;
+                    const dtend = `${year}${month}${day}T100000`;
+
+                    // Define as regras de recorrência com base na frequência da conta
+                    let rrule = '';
+                    switch(bill.frequency) {
+                        case 'semanal': rrule = 'RRULE:FREQ=WEEKLY\n'; break;
+                        case 'quinzenal': rrule = 'RRULE:FREQ=WEEKLY;INTERVAL=2\n'; break;
+                        case 'mensal': rrule = 'RRULE:FREQ=MONTHLY\n'; break;
+                        case 'bimestral': rrule = 'RRULE:FREQ=MONTHLY;INTERVAL=2\n'; break;
+                        case 'trimestral': rrule = 'RRULE:FREQ=MONTHLY;INTERVAL=3\n'; break;
+                        case 'semestral': rrule = 'RRULE:FREQ=MONTHLY;INTERVAL=6\n'; break;
+                        case 'anual': rrule = 'RRULE:FREQ=YEARLY\n'; break;
+                    }
+
+                    // Monta o arquivo ICS
+                    const icsContent = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Gestor de Contas PWA//PT
+BEGIN:VEVENT
+UID:${bill.id || Date.now()}@gestordecontas.app
+DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0]}Z
+DTSTART:${dtstart}
+DTEND:${dtend}
+SUMMARY:Pagar: ${bill.name}
+DESCRIPTION:Valor: R$ ${bill.amount.toFixed(2)} \\nCategoria: ${getCategoryName(bill.category)}
+${rrule}BEGIN:VALARM
+TRIGGER:-P2D
+ACTION:DISPLAY
+DESCRIPTION:Lembrete de Conta (em 2 dias)
+END:VALARM
+BEGIN:VALARM
+TRIGGER:-P1D
+ACTION:DISPLAY
+DESCRIPTION:Lembrete de Conta (Amanhã)
+END:VALARM
+BEGIN:VALARM
+TRIGGER:-PT0M
+ACTION:DISPLAY
+DESCRIPTION:Lembrete de Conta (HOJE)
+END:VALARM
+END:VEVENT
+END:VCALENDAR`;
+
+                    // Força o download/abertura do arquivo ICS
+                    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    link.download = `Lembrete_${bill.name.replace(/\s+/g, '_')}.ics`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                };
+
                 const exportData = () => {
                     const dataStr = JSON.stringify(bills.value, null, 2);
                     const blob = new Blob([dataStr], { type: "application/json" });
@@ -370,29 +423,6 @@
                     const now = new Date();
                     const filename = `Backup_Contas_${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}.json`;
                     const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
-                };
-
-                const checkDueBillsForLocalNotifications = () => {
-                    if (!("Notification" in window) || Notification.permission !== "granted") return;
-                    const todayDate = new Date();
-                    todayDate.setHours(0,0,0,0);
-
-                    bills.value.forEach(bill => {
-                        if(bill.paid) return;
-                        const d = new Date(bill.dueDate + 'T00:00:00');
-                        const diffDays = Math.ceil((d - todayDate) / (1000 * 60 * 60 * 24));
-                        
-                        const alertKey = `alert_${bill.id}_${diffDays}`;
-                        if (localStorage.getItem(alertKey)) return;
-
-                        if (diffDays === 1 || diffDays === 2) {
-                            new Notification("Conta próxima do vencimento!", { body: `${bill.name} vence em ${diffDays} dia(s).` });
-                            localStorage.setItem(alertKey, 'true');
-                        } else if (diffDays === 0) {
-                            new Notification("Conta vence HOJE!", { body: `Não esqueça de pagar: ${bill.name}` });
-                            localStorage.setItem(alertKey, 'true');
-                        }
-                    });
                 };
 
                 const updateChart = () => {
@@ -427,44 +457,6 @@
                     await addDoc(collection(db, "users", currentUser.value.uid, "bills"), nextBill);
                 };
 
-                // MODIFICAÇÃO IMPORTANTE AQUI: Salvando o Token no Firestore
-                const setupNotifications = async () => {
-                    if (!messaging || !currentUser.value) return;
-                    try {
-                        const permission = await Notification.requestPermission();
-                        if (permission === 'granted') {
-                            const vapidKey = "BH4-OXG0g7btZDkbaIgUPJyqrgsqq9INyB7f52rRc2IakXkByvDPQRbH8vbuqPyK0NHP_YIUtRz7B6_pruED5jI"; 
-                            
-                            // Aguarda o Service Worker estar pronto antes de pedir o token
-                            const registration = await navigator.serviceWorker.ready;
-                            
-                            const token = await getToken(messaging, { 
-                                vapidKey: vapidKey,
-                                serviceWorkerRegistration: registration 
-                            });
-                            
-                            console.log("FCM Token ativo:", token);
-
-                            // SALVA O TOKEN NO BANCO DE DADOS (Subcoleção 'tokens' do usuário)
-                            if (token) {
-                                await setDoc(doc(db, "users", currentUser.value.uid, "fcmTokens", token), {
-                                    token: token,
-                                    updatedAt: new Date().toISOString(),
-                                    device: navigator.userAgent
-                                });
-                            }
-
-                            onMessage(messaging, (payload) => {
-                                console.log('Mensagem recebida no app aberto: ', payload);
-                                // Modificado para não usar alert (melhor UX)
-                                new Notification(payload.notification.title, { body: payload.notification.body });
-                            });
-                        }
-                    } catch (error) {
-                        console.error('Erro ao configurar FCM:', error);
-                    }
-                };
-
                 const loadData = (uid) => {
                     const billsRef = collection(db, "users", uid, "bills");
                     unsubscribeSnapshot = onSnapshot(billsRef, (snapshot) => {
@@ -472,7 +464,6 @@
                         snapshot.forEach((doc) => { loadedBills.push({ id: doc.id, ...doc.data() }); });
                         bills.value = loadedBills;
                         updateChart();
-                        checkDueBillsForLocalNotifications(); 
                     });
                 };
 
@@ -516,8 +507,6 @@
                     onAuthStateChanged(auth, (user) => {
                         if (user) {
                             currentUser.value = user; isLoggedIn.value = true; loadData(user.uid);
-                            // Aguarda um instante para garantir que a UI carregou antes de pedir permissão
-                            setTimeout(() => setupNotifications(), 2000); 
                         } else {
                             currentUser.value = null; isLoggedIn.value = false; bills.value = [];
                             if (unsubscribeSnapshot) unsubscribeSnapshot();
@@ -527,7 +516,7 @@
 
                 watch(selectedMonth, updateChart); watch(filteredBills, updateChart, { deep: true });
 
-                return { isLoggedIn, isLoading, loginError, authForm, login, logout, bills, filteredBills, sortedBills, selectedMonth, showAddModal, form, categories, saveBill, togglePaid, deleteBill, totalMonth, totalPaid, totalPending, prevMonth, nextMonth, formatDate, formatCurrency, getStatusColor, getCategoryName, getCategoryColor, getFrequencyName, exportData };
+                return { isLoggedIn, isLoading, loginError, authForm, login, logout, bills, filteredBills, sortedBills, selectedMonth, showAddModal, form, categories, saveBill, togglePaid, deleteBill, totalMonth, totalPaid, totalPending, prevMonth, nextMonth, formatDate, formatCurrency, getStatusColor, getCategoryName, getCategoryColor, getFrequencyName, exportData, addToCalendar };
             }
         }).mount('#app');
     </script>
